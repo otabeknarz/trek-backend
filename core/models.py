@@ -1,6 +1,15 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import Column, String, Integer, ForeignKey, Table, func, DateTime
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    ForeignKey,
+    Table,
+    func,
+    DateTime,
+    Boolean,
+)
 from sqlalchemy.orm import relationship, Session
 
 from trek.database import Base
@@ -11,6 +20,7 @@ class BaseModel(Base):
     __abstract__ = True
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     created_at = Column(DateTime, default=datetime.now)
+    is_active = Column(Boolean, default=True)
 
     def save(self, db: Session):
         """Save the model instance to the database."""
@@ -88,6 +98,7 @@ class Track(BaseModel):
     name = Column(String, nullable=False)
     duration = Column(Integer)  # in seconds
     file_path = Column(String, nullable=False)  # Store file path or URL
+    thumbnail_path = Column(String, nullable=True)  # Store thumbnail path or URL
 
     # Foreign key to Album
     album_id = Column(Integer, ForeignKey("albums.id"), nullable=True)

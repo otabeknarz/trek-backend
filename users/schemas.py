@@ -9,7 +9,7 @@ class UserCreateSchema(BaseModel):
 
 
 class UserCheckPasswordSchema(BaseModel):
-    username: str
+    username_or_phone_number: str
     password: str
 
 

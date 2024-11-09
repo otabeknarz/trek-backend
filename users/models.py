@@ -50,7 +50,6 @@ class User(BaseModel):
     username = Column(String(50), unique=True, nullable=False)
     phone_number = Column(String(15), unique=True, nullable=True)
     password = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True)
     tracks = relationship("UserTrack", back_populates="user")
 
     def __repr__(self):

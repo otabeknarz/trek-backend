@@ -1,15 +1,18 @@
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from trek.database import get_db
 from users.models import User
-from .models import Track, Artist
+from .models import Track, Artist, Album
 from .schemas import (
     TrackCreateSchema,
     ArtistCreateSchema,
     TrackDeleteSchema,
     ListenToTrackSchema,
+    TrackResponseSchema,
+    ArtistResponseSchema,
+    AlbumCreateSchema,
+    AlbumResponseSchema,
+    TrackUpdateSchema,
 )
 
 router = APIRouter()
@@ -34,13 +37,13 @@ async def get_trending_tracks(
     return {"trending_tracks": serialized_tracks}
 
 
-@router.get("/tracks/")
-async def get_tracks(db: Session = Depends(get_db)):
+@router.get("/tracks/", response_model=list[TrackResponseSchema])
+async def get_tracks(db: Session = Depends(get_db)) -> [Track]:
     tracks = Track.all(db)
-    return {"tracks": tracks}
+    return tracks
 
 
-@router.post("/track/")
+@router.post("/track/", status_code=201, response_model=TrackResponseSchema)
 async def create_track(track_data: TrackCreateSchema, db: Session = Depends(get_db)):
     # Create the new Track instance
     new_track = Track(
@@ -53,13 +56,11 @@ async def create_track(track_data: TrackCreateSchema, db: Session = Depends(get_
     # Save the track to the database using the inherited save method
     try:
         new_track.save(db)
-    except Exception:
-        raise HTTPException(
-            status_code=500, detail="Failed to create track"
-        )  # Handle any exceptions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))  # Handle any exceptions
 
-    if not track_data.album_id:
-        return {"message": "Track created successfully", "track_id": new_track.id}
+    if not track_data.artists_id:
+        return new_track
 
     # Add artists to the track
     try:
@@ -68,13 +69,29 @@ async def create_track(track_data: TrackCreateSchema, db: Session = Depends(get_
     except ValueError as ve:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(ve))  # Handle artist not found
-    except Exception:
+    except Exception as e:
         db.rollback()  # Rollback on error
-        raise HTTPException(
-            status_code=500, detail="Failed to associate artists with track"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return {"message": "Track created successfully", "track_id": new_track.id}
+    return new_track
+
+
+@router.patch("/track/{track_id}/", response_model=TrackResponseSchema)
+async def update_track(
+    track_id: int, track_data: TrackUpdateSchema, db: Session = Depends(get_db)
+) -> Track:
+    track = Track.get(db, id=track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    try:
+        for key, value in track_data.dict(exclude_unset=True).items():
+            setattr(track, key, value)
+        track.save(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return track
 
 
 @router.delete("/track/")
@@ -88,20 +105,25 @@ async def delete_track(track_data: TrackDeleteSchema, db: Session = Depends(get_
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to delete track")
 
-    return {"message": "Track deleted successfully"}
+    return {"message": f"Track '{track.name}' deleted successfully"}
 
 
-@router.get("/artists/")
-async def get_artists(db: Session = Depends(get_db)):
+@router.get("/artists/", response_model=list[ArtistResponseSchema])
+async def get_artists(db: Session = Depends(get_db)) -> [Artist]:
     artists = Artist.all(db)
-    return {"artists": artists}
+    return artists
 
 
-@router.post("/artist/")
-async def create_artist(artist_data: ArtistCreateSchema, db: Session = Depends(get_db)):
-    new_artist = Artist(name=artist_data.name)
-    new_artist.save(db)
-    return {"message": "Artist created successfully", "artist_id": new_artist.id}
+@router.post("/artist/", status_code=201, response_model=ArtistResponseSchema)
+async def create_artist(
+    artist_data: ArtistCreateSchema, db: Session = Depends(get_db)
+) -> Artist:
+    try:
+        new_artist = Artist(name=artist_data.name)
+        new_artist.save(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return new_artist
 
 
 @router.delete("/artist/")
@@ -115,10 +137,34 @@ async def delete_artist(artist_data: ArtistCreateSchema, db: Session = Depends(g
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to delete artist")
 
-    return {"message": "Artist deleted successfully"}
+    return {"message": f"Artist '{artist.name}' deleted successfully"}
 
 
-@router.post("/listen/")
+@router.get("/artist/{artist_id}/tracks/", response_model=list[TrackResponseSchema])
+async def get_artist_tracks(artist_id: int, db: Session = Depends(get_db)) -> [Track]:
+    artist = Artist.get(db, id=artist_id)
+    if not artist:
+        raise HTTPException(status_code=404, detail="Artist not found")
+
+    return artist.tracks
+
+
+@router.get("/albums/", response_model=list[AlbumResponseSchema])
+async def get_albums(db: Session = Depends(get_db)) -> [Album]:
+    albums = Album.all(db)
+    return albums
+
+
+@router.post("/albums/", status_code=201, response_model=AlbumCreateSchema)
+async def create_album(
+    album_data: AlbumCreateSchema, db: Session = Depends(get_db)
+) -> Album:
+    new_album = Album(name=album_data.name, release_year=album_data.release_year)
+    new_album.save(db)
+    return new_album
+
+
+@router.post("/listen/", status_code=201)
 async def listen_to_track(
     credentials: ListenToTrackSchema, db: Session = Depends(get_db)
 ):
